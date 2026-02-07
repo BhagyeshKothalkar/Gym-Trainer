@@ -5,43 +5,45 @@ import shutil
 import tempfile
 import base64
 import time
-
-
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse 
-from pydantic import ImportString
 from scipy.spatial.distance import cdist
 from scipy.stats import zscore
 
-# local imports 
+# --- LOCAL IMPORTS ---
 import video_process
 from visual_coach import VisualChain
 
 app = FastAPI()
 
-# CORS arrangements 
+# --- CORS CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"], # Allow all origins for flexibility, or use ["http://localhost:3000"] without trailing slash
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
+    allow_methods=["*"], # Must be "*" or specific methods like "POST", "GET"
+    allow_headers=["*"], # Must be "*" or specific headers
 )
 
-# instantiation of Visual coach
+# Initialize The Coach
 coach = VisualChain()
 
-# hyperparams
+# --- CONSTANTS ---
 TARGET_FRAMES = 100     # Number of frames to extract
 ERROR_THRESHOLD = 0.8   # Z-score distance threshold
-MAX_ERROR_FRAMES = 10   # Max number of distinct error events to report
-FRAME_CLUSTER_GAP = 10  # Frames within this distance are considered the same cluster or pose 
+MAX_ERROR_FRAMES = 10    # Max number of distinct error events to report
+FRAME_CLUSTER_GAP = 10  # Frames within this distance are considered the same "event"
 
-# encoding for Fastapi and further communications
+# --- HELPER FUNCTIONS ---
 def image_to_base64(img_array):
+    # Encodes a numpy image array to a base64 string
     _, buffer = cv2.imencode('.jpg', img_array)
     return base64.b64encode(buffer).decode('utf-8')
+
+ 
+
+
 
 
 @app.post("/analyze_movement")
@@ -90,26 +92,24 @@ async def analyze_movement(
         dist_matrix = cdist(u_feats_norm, t_feats_norm, metric='cityblock')
         best_match_indices = np.argmin(dist_matrix, axis=1)
 
-        # 5. IDENTIFY & CLUSTER ERRORS
         raw_error_candidates = []
         
-        # 5a. Collect all frames that fail the threshold
+        #  Collect all frames that fail the threshold
         for u_idx, t_idx in enumerate(best_match_indices):
             cost = dist_matrix[u_idx, t_idx]
-            if cost > ERROR_THRESHOLD: 
-
+            if cost > ERROR_THRESHOLD:
                 raw_error_candidates.append({
                     "cost": cost,
                     "u_idx": u_idx,
                     "t_idx": t_idx
                 })
 
-        # 5b. CLUSTERING LOGIC
+     
         # If we have errors, group them by time so we don't spam similar frames
         unique_errors = []
         
         if raw_error_candidates:
-            # Sort by user frame index (time)
+          
             raw_error_candidates.sort(key=lambda x: x["u_idx"])
             
             # Initialize first cluster
@@ -144,15 +144,14 @@ async def analyze_movement(
         print(f"Condensed into {len(unique_errors)} distinct error events.")
         print(f"Analyzing top {len(top_errors)} events.")
 
-        # 6. SEQUENTIAL ANALYSIS
+        # 6. GENERATE VISUAL FEEDBACK (VLM + LLM)
         results = []
-        print(f"Starting sequential analysis of {len(top_errors)} frames...")
-
-        for i, item in enumerate(top_errors):
+        
+        for item in top_errors:
             u_idx = item['u_idx']
             t_idx = item['t_idx']
             
-            # Prepare images
+            # Retrieve raw data
             u_frame_data = u_data[u_idx]
             t_frame_data = t_data[t_idx]
             
@@ -160,24 +159,33 @@ async def analyze_movement(
             u_img_skel = video_process.draw_skeleton_on_image(u_frame_data['image'], u_frame_data['kpts'])
             t_img_skel = video_process.draw_skeleton_on_image(t_frame_data['image'], t_frame_data['kpts'])
             
+            # Convert to Base64
             u_b64 = image_to_base64(u_img_skel)
             t_b64 = image_to_base64(t_img_skel)
             
-            print(f" -> analyzing error {i+1}/{len(top_errors)} (User Frame {u_idx})...")
+            # Call the AI Coach
+            print(f"Requesting AI feedback for frame pair (User: {u_idx}, Trainer: {t_idx})...")
+            ai_feedback, tech_obs =  coach.analyze_images(u_b64, t_b64, exercise_name)
             
-            # AWAIT HERE SEQUENTIALLY: Process one image pair, wait for result, then move to next
-            feedback = coach.analyze_images(u_b64, t_b64, exercise_name)
-            
-            # Append result immediately
             results.append({
                 "frame_id": int(u_idx),
                 "error_score": round(item['cost'], 2),
-                "feedback": feedback, 
+                "feedback": ai_feedback,
+                "technical_observation": tech_obs,
                 "user_image": u_b64, 
                 "trainer_image": t_b64 
             })
+
+        # 7. GENERATE SESSION SUMMARY
+        all_observations = [r['technical_observation'] for r in results]
+        session_summary_json =  coach.generate_session_summary(all_observations)
             
-        return {"status": "success", "analysis": results}
+        return {
+            "status": "success", 
+            "analysis": results,
+            "feedback_summary": session_summary_json.get("feedback_summary", "Analysis Complete."),
+            "technical_details": session_summary_json.get("corrections", [])
+        }
 
     except Exception as e:
         import traceback
