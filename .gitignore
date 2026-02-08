@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+.python-version
+
+# Modal & Data
+data/
+.modal/
+
+# Environment
+.env
