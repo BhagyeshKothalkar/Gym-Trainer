@@ -9,7 +9,7 @@ Ensure you have the following **Secrets** configured in your [Modal Dashboard](h
 Run the following commands to clone the `modal_deploy` branch, sync your environment, and launch the app:
 
 ```bash
-git clone -b modal_deploy [https://github.com/BhagyeshKothalkar/Gym-Trainer.git](https://github.com/BhagyeshKothalkar/Gym-Trainer.git)
+git clone -b modal_deploy https://github.com/BhagyeshKothalkar/Gym-Trainer.git
 cd Gym-Trainer
 
 # Initialize the environment and sync dependencies
