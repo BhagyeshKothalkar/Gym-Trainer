@@ -10,7 +10,7 @@ Run the following commands to clone the `modal_deploy` branch, sync your environ
 
 ```bash
 # Clone the repository and enter the directory
-git clone -b modal_deploy [https://github.com/YOUR_USERNAME/Gym-Trainer.git](https://github.com/YOUR_USERNAME/Gym-Trainer.git)
+git clone -b modal_deploy [https://github.com/BhagyeshKothalkar/Gym-Trainer.git](https://github.com/YOUR_USERNAME/Gym-Trainer.git)
 cd Gym-Trainer
 
 # Initialize the environment and sync dependencies
