@@ -1,26 +1,24 @@
-import base64
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from config import GROQ_API_KEY
 
+
 class VisualChain:
     def __init__(self):
         # 1. Vision Model (The Eyes)
         self.vlm = ChatGroq(
-            model="meta-llama/llama-4-maverick-17b-128e-instruct", # Updated to latest Vision model on Groq
+            model="meta-llama/llama-4-maverick-17b-128e-instruct",  # Updated to latest Vision model on Groq
             temperature=0.0,
-            api_key=GROQ_API_KEY
+            api_key=GROQ_API_KEY,
         )
-        
+
         # 2. Text Model (The Coach Brain)
         self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
-            temperature=0.3,
-            api_key=GROQ_API_KEY
+            model="llama-3.3-70b-versatile", temperature=0.3, api_key=GROQ_API_KEY
         )
-        
+
         # 3. Coach Prompt
         self.coach_prompt = ChatPromptTemplate.from_template(
             """
@@ -89,13 +87,16 @@ class VisualChain:
         Takes Base64 images (with skeletons already drawn), gets technical analysis, then converts to coaching cue.
         """
         print(f"👀 VLM analyzing {exercise_name}...")
-        
+
         vlm_messages = [
-            SystemMessage(content="You are a Biomechanics Expert. Analyze the skeletal overlays in the images."),
-            HumanMessage(content=[
-                {
-                    "type": "text", 
-                    "text": f"""
+            SystemMessage(
+                content="You are a Biomechanics Expert. Analyze the skeletal overlays in the images."
+            ),
+            HumanMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": f"""
                     TASK: Compare the Biomechanics of the USER (Image 1) vs. the TRAINER (Image 2).
                     
                     CONTEXT: 
@@ -110,31 +111,32 @@ class VisualChain:
 
                     OUTPUT:
                     Identify the geometric differences. Be technical (e.g., "User's knee valgus angle is greater").
-                    """
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{user_img_b64}"}
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{trainer_img_b64}"}
-                }
-                
-            ])
+                    """,
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{user_img_b64}"},
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{trainer_img_b64}"
+                        },
+                    },
+                ]
+            ),
         ]
-        
+
         try:
             # Get the technical description
-            vlm_response =  self.vlm.invoke(vlm_messages)
+            vlm_response = self.vlm.invoke(vlm_messages)
             technical_observation = vlm_response.content
-            
+
             # Generate Cue
-            final_cue =  self.coach_chain.invoke({
-                "observation": technical_observation,
-                "exercise_name": exercise_name
-            })
-            
+            final_cue = self.coach_chain.invoke(
+                {"observation": technical_observation, "exercise_name": exercise_name}
+            )
+
             return final_cue, technical_observation
         except Exception as e:
             print(f"Error in VLM chain: {e}")
@@ -147,25 +149,20 @@ class VisualChain:
         print(" Generating Session Summary...")
         try:
             # Join all observations into a single string context
-            obs_text = "\n".join([f"- Frame {i}: {obs}" for i, obs in enumerate(observations)])
-            
-            json_response =  self.summary_chain.invoke({
-                "observations": obs_text
-            })
-            
+            obs_text = "\n".join(
+                [f"- Frame {i}: {obs}" for i, obs in enumerate(observations)]
+            )
+
+            json_response = self.summary_chain.invoke({"observations": obs_text})
+
             # Simple cleanup to ensure JSON
             import json
+
             cleaned_json = json_response.strip()
             if cleaned_json.startswith("```json"):
                 cleaned_json = cleaned_json.replace("```json", "").replace("```", "")
-            
+
             return json.loads(cleaned_json)
         except Exception as e:
             print(f"Error generating summary: {e}")
-            return {
-                "feedback_summary": "Session analysis complete.",
-                "corrections": []
-            }
-
-
-
+            return {"feedback_summary": "Session analysis complete.", "corrections": []}
